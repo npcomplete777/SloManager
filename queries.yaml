@@ -1,0 +1,5 @@
+get_req_resp_bodies_nonprod_small_sample:
+  query: "fetch dt.entity.kubernetes_cluster"
+  timeFrameStart: "now-5m"
+  timeFrameEnd: "now"
+  maxResultRecords: 100

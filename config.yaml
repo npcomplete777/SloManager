@@ -1,0 +1,5 @@
+base_url: https://<YOUR_INSTANCE_HERE>.apps.dynatrace.com
+platform_token: dt
+settings:
+  output_dir: output
+  output_format: csv
