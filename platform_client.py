@@ -2,11 +2,15 @@
 
 import requests
 from typing import Dict, List
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+
+# Disable the InsecureRequestWarning when verify=False
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 class DynatracePlatformClient:
     """
     Client for Dynatrace Platform APIs using platform token authentication.
-    Includes SLO methods (list, create, update, delete) and a DQL method (execute_dql_query).
+    SSL verification is disabled (verify=False) to allow self-signed certificates.
     """
 
     def __init__(self, base_url: str, platform_token: str):
@@ -15,12 +19,14 @@ class DynatracePlatformClient:
         self.platform_token = platform_token
         self.slo_api_path = "/platform/slo/v1"
 
-    def get_headers(self) -> Dict[str, str]:
-        return {
+        # Create a session so we only configure verify=False once
+        self.session = requests.Session()
+        self.session.verify = False  # ← DISABLE SSL CERT VERIFICATION
+        self.session.headers.update({
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.platform_token}"
-        }
+        })
 
     def handle_response(self, response: requests.Response) -> Dict:
         if 200 <= response.status_code < 300:
@@ -39,19 +45,24 @@ class DynatracePlatformClient:
         if page_key:
             params["page-key"] = page_key
 
-        resp = requests.get(url, headers=self.get_headers(), params=params)
+        resp = self.session.get(url, params=params)
         return self.handle_response(resp)
 
     def delete_slo(self, slo_id: str, version: str) -> None:
         url = f"{self.base_url}{self.slo_api_path}/slos/{slo_id}"
         params = {"optimistic-locking-version": version}
-        resp = requests.delete(url, headers=self.get_headers(), params=params)
+        resp = self.session.delete(url, params=params)
         if resp.status_code != 204:
             self.handle_response(resp)
 
-    def create_slo(self, name: str, description: str, criteria: List[Dict],
-                   custom_sli: Dict = None, sli_reference: Dict = None,
-                   tags: List[str] = None, external_id: str = None) -> Dict:
+    def create_slo(self,
+                   name: str,
+                   description: str,
+                   criteria: List[Dict],
+                   custom_sli: Dict = None,
+                   sli_reference: Dict = None,
+                   tags: List[str] = None,
+                   external_id: str = None) -> Dict:
         url = f"{self.base_url}{self.slo_api_path}/slos"
         payload = {
             "name": name,
@@ -67,12 +78,18 @@ class DynatracePlatformClient:
         if external_id:
             payload["externalId"] = external_id
 
-        resp = requests.post(url, headers=self.get_headers(), json=payload)
+        resp = self.session.post(url, json=payload)
         return self.handle_response(resp)
 
-    def update_slo(self, slo_id: str, version: str, name: str, description: str,
-                   criteria: List[Dict], custom_sli: Dict = None,
-                   sli_reference: Dict = None, tags: List[str] = None,
+    def update_slo(self,
+                   slo_id: str,
+                   version: str,
+                   name: str,
+                   description: str,
+                   criteria: List[Dict],
+                   custom_sli: Dict = None,
+                   sli_reference: Dict = None,
+                   tags: List[str] = None,
                    external_id: str = None) -> Dict:
         """
         Update an existing SLO using the PUT endpoint
@@ -94,13 +111,16 @@ class DynatracePlatformClient:
         if external_id:
             payload["externalId"] = external_id
 
-        resp = requests.put(url, headers=self.get_headers(), params=params, json=payload)
+        resp = self.session.put(url, params=params, json=payload)
         return self.handle_response(resp)
 
     # -------------------------
     # DQL API METHOD
     # -------------------------
-    def execute_dql_query(self, query: str, timeframe_start: str, timeframe_end: str,
+    def execute_dql_query(self,
+                          query: str,
+                          timeframe_start: str,
+                          timeframe_end: str,
                           max_result_records: int = None) -> Dict:
         """
         Executes a DQL query against the Dynatrace DQL endpoint.
@@ -115,5 +135,5 @@ class DynatracePlatformClient:
         if max_result_records is not None:
             body["maxResultRecords"] = max_result_records
 
-        response = requests.post(url, json=body, headers=self.get_headers())
+        response = self.session.post(url, json=body)
         return self.handle_response(response)
