@@ -33,16 +33,22 @@ def show_slo_list_delete():
     if st.button("Load All SLOs"):
         with st.spinner("Loading SLOs..."):
             st.session_state["all_slos"] = load_all_slos(client)
+        # Display the count in the success message regardless
         st.success(f"Successfully loaded {len(st.session_state.get('all_slos', []))} SLOs.")
         st.rerun()
 
-    if "all_slos" in st.session_state and st.session_state["all_slos"]:
+    # Check if the 'all_slos' key exists in the session state
+    if "all_slos" in st.session_state:
         all_slos = st.session_state["all_slos"]
 
-        # --- TOP "DELETE ALL" SECTION ---
-        col1, col2 = st.columns([0.7, 0.3])
-        col1.info(f"**Total SLOs found: {len(all_slos)}**")
-        delete_all_top = col2.button("🚨 Delete ALL SLOs", key="delete_all_top", use_container_width=True)
+        # If the list exists but is empty, show the custom message
+        if not all_slos:
+            st.info("The API call was made successfully, but there are no SLOs to load.")
+            return # Stop further execution for this tab
+
+        # --- DISPLAY AND DELETE SECTION ---
+        # The top button has been removed, now we just show the total count.
+        st.info(f"**Total SLOs found: {len(all_slos)}**")
         st.write("---")
 
         # Section for Deleting Selected SLOs (using a form)
@@ -88,7 +94,8 @@ def show_slo_list_delete():
 
         confirm_delete_all = st.checkbox("I confirm I want to delete ALL loaded SLOs")
 
-        if delete_all_top or delete_all_bottom:
+        # The conditional logic is updated to only check for the bottom button
+        if delete_all_bottom:
             if confirm_delete_all:
                 with st.spinner("Deleting all SLOs..."):
                     for slo_data in all_slos:
