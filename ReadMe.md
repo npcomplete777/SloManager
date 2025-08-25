@@ -21,6 +21,7 @@ my_app/
 ├── queries.py                   # Query management
 ├── queries.yaml                 # Query definitions
 ├── ZURICH_APPS_SERVICES_WITH_TAGS.csv
+├── ZURICH_APPS_CUSTOM.csv
 ├── ZURICH_HOSTS_WITH_TAGS.csv
 ├── ZURICH_K8s_CLUSTERS.csv
 ├── ZURICH_K8s_NAMESPACES_BY_CLUSTER.csv
@@ -88,6 +89,7 @@ Where:
 - `{type}` is replaced by a code based on your selection:
   - Services: "sa" for availability or "sp" for performance
   - Hosts: "hp" for host performance
+  - Custom: "custom" for using the custom template option
 
 **For K8s Templates (Clusters and Namespaces):**
 ```
