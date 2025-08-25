@@ -1,0 +1,172 @@
+app,bu,criticality,env
+APP-1001,Data Mgmt,High,PRD
+APP-10073,null,null,PRD
+APP-1013,Data Mgmt,High,PRD
+APP-1016,Underwriting Systems,High,PRD
+APP-10213,IT Infrastructure & Operations,Low,PRD
+APP-1034,Underwriting Systems,Low,PRD
+APP-1036,Adv Tech & Ent Sol,High,PRD
+APP-10385,IT Infrastructure & Operations,Low,PRD
+APP-1049,Underwriting Systems,High,PRD
+APP-1054,Claims & SAP,High,PRD
+APP-10592,IT Infrastructure & Operations,Low,PRD
+APP-10594,Data Governance,High,PRD
+APP-10595,Underwriting Systems,High,PRD
+APP-10691,Data Mgmt,Low,PRD
+APP-10700,Underwriting Systems,High,PRD
+APP-1079,Data Mgmt,High,PRD
+APP-1081,Claims & SAP,Low,PRD
+APP-1082,Claims & SAP,Low,PRD
+APP-1095,Underwriting Systems,High,PRD
+APP-1107,Claims & SAP,High,PRD
+APP-1113,Data Mgmt,High,PRD
+APP-11352,IT Infrastructure & Operations,Low,PRD
+APP-11359,Data Mgmt,Low,PRD
+APP-1137,Adv Tech & Ent Sol,Low,PRD
+APP-1138,Data Mgmt,Low,PRD
+APP-11485,Data Analytics Engineering,Low,PRD
+APP-11504,Information Security,Low,PRD
+APP-1156,Underwriting Systems,High,PRD
+APP-11569,IT Infrastructure & Operations,Low,PRD
+APP-11579,Canada,Low,PRD
+APP-11728,IT Infrastructure & Operations,Low,PRD
+APP-1179,Underwriting Systems,High,PRD
+APP-11947,IT Infrastructure & Operations,Low,PRD
+APP-11955,Adv Tech & Ent Sol,High,PRD
+APP-12071,IT Infrastructure & Operations,Low,PRD
+APP-12278,Claims & SAP,Low,PRD
+APP-12305,Underwriting Systems,Low,PRD
+APP-12339,null,null,PRD
+APP-1234,Underwriting Systems,High,PRD
+APP-1237,Underwriting Systems,Low,PRD
+APP-12371,Data Analytics Engineering,Low,PRD
+APP-12372,Data Analytics Engineering,Low,PRD
+APP-1238,Underwriting Systems,High,PRD
+APP-12692,null,null,PRD
+APP-1270,Claims & SAP,High,PRD
+APP-12701,Claims & SAP,Low,PRD
+APP-12720,Data Mgmt,Low,PRD
+APP-12735,Claims & SAP,Low,PRD
+APP-12736,Adv Tech & Ent Sol,Low,PRD
+APP-12796,Data Mgmt,Low,PRD
+APP-12797,Data Mgmt,Low,PRD
+APP-12815,ZAAM,Low,PRD
+APP-1284,Data Mgmt,High,PRD
+APP-1289,Claims & SAP,Low,PRD
+APP-1294,Underwriting Systems,High,PRD
+APP-1295,Data Mgmt,Low,PRD
+APP-13012,Adv Tech & Ent Sol,High,PRD
+APP-13059,Underwriting Systems,Low,PRD
+APP-1309,Data Mgmt,High,PRD
+APP-13116,IT Infrastructure & Operations,Low,PRD
+APP-13198,Adv Tech & Ent Sol,Low,PRD
+APP-13308,IT Gov & Prgm Mgmt,Low,PRD
+APP-1544,Underwriting Systems,High,PRD
+APP-1548,Underwriting Systems,High,PRD
+APP-1577,Data Mgmt,Low,PRD
+APP-1677,Underwriting Systems,High,PRD
+APP-1685,null,null,PRD
+APP-2455,Claims & SAP,High,PRD
+APP-2487,Underwriting Systems,High,PRD
+APP-2641,Canada,High,PRD
+APP-2685,Data Mgmt,High,PRD
+APP-3982,null,null,PRD
+APP-3986,Claims & SAP,High,PRD
+APP-3991,Data Mgmt,High,PRD
+APP-4034,Data Mgmt,High,PRD
+APP-4119,Underwriting Systems,High,PRD
+APP-4120,Canada,High,PRD
+APP-4132,Claims & SAP,Low,PRD
+APP-4161,Data Analytics Engineering,High,PRD
+APP-4463,Claims & SAP,High,PRD
+APP-4982,Claims & SAP,High,PRD
+APP-4989,Adv Tech & Ent Sol,High,PRD
+APP-5002,Underwriting Systems,High,PRD
+APP-5017,null,null,PRD
+APP-6192,Underwriting Systems,Low,PRD
+APP-6222,Data Mgmt,Low,PRD
+APP-6223,Data Mgmt,Low,PRD
+APP-6245,Data Mgmt,Low,PRD
+APP-6335,null,null,PRD
+APP-6336,Adv Tech & Ent Sol,Low,PRD
+APP-6358,null,null,PRD
+APP-6409,Underwriting Systems,High,PRD
+APP-6557,Claims & SAP,High,PRD
+APP-6597,Underwriting Systems,High,PRD
+APP-6879,Data Mgmt,High,PRD
+APP-7026,Crop,High,PRD
+APP-7037,Underwriting Systems,High,PRD
+APP-7077,Underwriting Systems,Low,PRD
+APP-7169,Canada,High,PRD
+APP-7439,Underwriting Systems,High,PRD
+APP-7469,Crop,Low,PRD
+APP-7483,Crop,High,PRD
+APP-7604,Data Analytics Engineering,Low,PRD
+APP-7765,Adv Tech & Ent Sol,High,PRD
+APP-7766,Adv Tech & Ent Sol,Low,PRD
+APP-7767,Underwriting Systems,Low,PRD
+APP-7771,Crop,Low,PRD
+APP-7776,Adv Tech & Ent Sol,High,PRD
+APP-7824,Claims & SAP,High,PRD
+APP-7825,Data Mgmt,High,PRD
+APP-7826,Data Mgmt,Low,PRD
+APP-8624,null,null,PRD
+APP-8697,Adv Tech & Ent Sol,Low,PRD
+APP-8781,Underwriting Systems,High,PRD
+APP-8941,Underwriting Systems,Low,PRD
+APP-9344,Data Analytics Engineering,Low,PRD
+APP-9347,Adv Tech & Ent Sol,Low,PRD
+APP-9397,Data Mgmt,Low,PRD
+APP-9417,Canada,High,PRD
+APP-946,Underwriting Systems,High,PRD
+APP-9605,Claims & SAP,Low,PRD
+APP-9617,Canada,Low,PRD
+APP-9711,Underwriting Systems,High,PRD
+APP-9843,null,null,PRD
+COM-05670,null,null,PRD
+COM-2358,Adv Tech & Ent Sol,High,PRD
+COM-2391,IT Infrastructure & Operations,Low,PRD
+COM-2394,IT Infrastructure & Operations,Low,PRD
+COM-2432,Adv Tech & Ent Sol,Low,PRD
+COM-2512,IT Infrastructure & Operations,Low,PRD
+COM-2604,null,null,PRD
+COM-2773,Adv Tech & Ent Sol,High,PRD
+COM-3638,Data Mgmt,Low,PRD
+COM-3651,IT Infrastructure & Operations,Low,PRD
+COM-3655,Crop,Low,PRD
+COM-3803,null,null,PRD
+COM-3962,null,null,PRD
+COM-4611,Underwriting Systems,Low,PRD
+COM-4716,null,null,PRD
+COM-4812,IT Infrastructure & Operations,High,PRD
+COM-4835,Underwriting Systems,Low,PRD
+COM-4957,Data Analytics Engineering,High,PRD
+COM-4995,Claims & SAP,Low,PRD
+COM-5040,IT Infrastructure & Operations,Low,PRD
+COM-5043,IT Infrastructure & Operations,High,PRD
+COM-5106,Underwriting Systems,Low,PRD
+COM-5372,Adv Tech & Ent Sol,Low,PRD
+COM-5668,Crop,Low,PRD
+COM-5670,IT Infrastructure & Operations,Low,PRD
+COM-5893,Crop,Low,PRD
+COM-5896,null,null,PRD
+COM-5899,Crop,Low,PRD
+COM-5901,Crop,Low,PRD
+COM-5904,Crop,Low,PRD
+COM-5922,null,null,PRD
+COM-5923,null,null,PRD
+COM-6102,Data Mgmt,Low,PRD
+COM-6105,Adv Tech & Ent Sol,Low,PRD
+COM-6358,Adv Tech & Ent Sol,Low,PRD
+COM-6359,IT Infrastructure & Operations,Low,PRD
+COM-6458,null,null,PRD
+COM-6459,null,null,PRD
+COM-6902,Crop,Low,PRD
+COM-6916,Claims & SAP,Low,PRD
+COM-6934,Claims & SAP,Low,PRD
+COM-7765,null,null,PRD
+COM-8110,IT Infrastructure & Operations,Low,PRD
+COM-8111,IT Infrastructure & Operations,Low,PRD
+COM-8137,IT Infrastructure & Operations,Low,PRD
+COM-8150,Crop,Low,PRD
+COM-8256,Data Mgmt,Low,PRD

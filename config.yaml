@@ -1,5 +1,11 @@
-base_url: https://<YOUR_INSTANCE_HERE>.apps.dynatrace.com
-platform_token: dt
+base_url: https://bua21938.apps.dynatrace.com
+csv_paths:
+  Custom (ZURICH_APPS_CUSTOM): templates/ZURICH_APPS_CUSTOM.csv
+  Hosts (ZURICH_HOSTS_WITH_TAGS): templates/ZURICH_HOSTS_WITH_TAGS.csv
+  K8s Clusters (ZURICH_K8S_CLUSTERS): templates/ZURICH_K8s_CLUSTERS.csv
+  K8s Namespaces (ZURICH_K8S_NAMESPACES_BY_CLUSTER): templates/ZURICH_K8S_NAMESPACES_BY_CLUSTER.csv
+  Services (ZURICH_APPS_SERVICES_WITH_TAGS): templates/ZURICH_APPS_SERVICES_WITH_TAGS.csv
+platform_token: YOUR_DYNATRACE_TOKEN_HERE
 settings:
   output_dir: output
   output_format: csv

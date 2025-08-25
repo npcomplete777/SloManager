@@ -78,14 +78,9 @@ def main():
             platform_token=config["platform_token"]
         )
 
-    # 3) Dictionary of default CSV file paths (for the CSV Manager tab)
+    # 3) Load CSV file paths from the config object
     if "csv_paths" not in st.session_state:
-        st.session_state["csv_paths"] = {
-            "Services (ZURICH_APPS_SERVICES_WITH_TAGS)": "ZURICH_APPS_SERVICES_WITH_TAGS.csv",
-            "Hosts (ZURICH_HOSTS_WITH_TAGS)": "ZURICH_HOSTS_WITH_TAGS.csv",
-            "K8s Clusters (ZURICH_K8s_CLUSTERS)": "ZURICH_K8s_CLUSTERS.csv",
-            "K8s Namespaces (ZURICH_K8s_NAMESPACES_BY_CLUSTER)": "ZURICH_K8s_NAMESPACES_BY_CLUSTER.csv"
-        }
+        st.session_state["csv_paths"] = config.get("csv_paths", {})
 
     # 4) Create the six tabs
     tab_csv_manager, tab_list_delete, tab_create, tab_update, tab_dql, tab_k8s_inventory = st.tabs([

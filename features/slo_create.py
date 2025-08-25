@@ -2,414 +2,269 @@
 
 import streamlit as st
 import pandas as pd
-import ast
-import os
+from utils import robust_read_csv, parse_list_field
 
-
-####################################################
-# Helper function to generate tags from columns[2:].
-# (Identical to the final version used in main.py)
-####################################################
-def generate_tags_description_from_third_col(row, df, slo_name, naming_convention):
-    """
-    Given a row from the CSV, skip the first 2 columns
-    and build a list of tags using columns[2:].
-    Also applies any matching {col_name} placeholders
-    inside the SLO naming convention.
-
-    Returns:
-        updated_slo_name (str): Possibly updated SLO name after placeholder replacements.
-        tags (list): A list of tags derived from columns[2:].
-        description (str): A descriptive string summarizing the columns used as tags.
-    """
-    tags = []
-    description_parts = []
-
-    # We start with the user-provided naming convention
-    updated_slo_name = str(slo_name)
-
-    # For each column from the 3rd onwards (index 2 and up):
-    for col_name in df.columns[2:]:
-        if col_name in row and pd.notna(row[col_name]) and str(row[col_name]).strip() != "":
-            col_value = str(row[col_name]).strip()
-
-            # If the naming convention has placeholders like {col_name}, replace them
-            placeholder = f"{{{col_name}}}"
-            if placeholder in updated_slo_name:
-                updated_slo_name = updated_slo_name.replace(placeholder, col_value)
-
-            # Add as a tag (key:value)
-            tags.append(f"{col_name}:{col_value}")
-
-            # For readability, add to description
-            description_parts.append(f"{col_name}={col_value}")
-
-    description = ", ".join(description_parts) if description_parts else ""
-    return updated_slo_name, tags, description
-
-
-def show_slo_create():
-    """
-    Full 'Create SLOs' tab logic.
-    """
-    st.header("Create SLOs From Pre-Loaded CSV")
-
-    # Get the dt_client from session_state
-    client = st.session_state["dt_client"]
-    config = st.session_state["config"]
-    csv_paths = st.session_state["csv_paths"]
-
-    creation_csv_choice = st.selectbox("Choose CSV for creation", list(csv_paths.keys()))
-    creation_csv_path = csv_paths[creation_csv_choice]
-
-    # SLO naming
-    st.write("**SLO Naming Convention**")
-    if "K8s Namespaces" in creation_csv_choice or "K8s Clusters" in creation_csv_choice:
-        naming_convention = st.text_input(
-            "Naming Format",
-            value="{cluster_name}",
-            help="For K8s templates, use {cluster_name} placeholder",
-            key="naming_convention_k8s"
-        )
-    else:
-        naming_convention = st.text_input(
-            "Naming Format",
-            value="{app}_{type}",
-            help="Use placeholders like {app}, {type}, and any additional columns from your CSV",
-            key="naming_convention"
-        )
-
-    # We'll create a "default_dql" after we determine the SLO type
-    default_dql = "fetch bizevents | limit 100"  # fallback
-
-    # ---------- SERVICES ----------
-    if "Services" in creation_csv_choice:
-        service_slo_type = st.selectbox(
-            "Service SLO Type",
-            ["service availability", "service performance"],
-            key="service_slo_type"
-        )
-        if "availability" in service_slo_type.lower():
-            default_dql = """timeseries { total=sum(dt.service.request.count) ,failures=sum(dt.service.request.failure_count) }
-  , by: { dt.entity.service }
-  , filter: { in (dt.entity.service, { <PLACEHOLDER> }) }
-| fieldsAdd sli=(((total[]-failures[])/total[])*(100))
-| fieldsAdd entityName(dt.entity.service)
-| fieldsRemove total, failures
-"""
-        else:
-            default_dql = """timeseries total=avg(dt.service.request.response_time, default:0)
-, by: { dt.entity.service }, filter: { in (dt.entity.service, { <PLACEHOLDER> }) }
-| fieldsAdd high=iCollectArray(if(total[]> (1000 * 500), total[]))
-| fieldsAdd low=iCollectArray(if(total[]<= (1000 * 500), total[]))
-| fieldsAdd highRespTimes=iCollectArray(if(isNull(high[]),0,else:1))
-| fieldsAdd lowRespTimes=iCollectArray(if(isNull(low[]),0,else:1))
-| fieldsAdd sli=100*(lowRespTimes[]/(lowRespTimes[]+highRespTimes[]))
-| fieldsAdd entityName(dt.entity.service)
-| fieldsRemove total, high, low, highRespTimes, lowRespTimes
-"""
-
-    # ---------- K8s CLUSTERS ----------
-    elif "K8s Clusters" in creation_csv_choice:
-        cluster_slo_type = st.selectbox(
-            "Cluster SLO Type",
-            [
-                "Kubernetes cluster memory usage efficiency",
-                "Kubernetes cluster CPU usage efficiency"
-            ],
-            key="k8s_cluster_slo_type"
-        )
-        if "memory" in cluster_slo_type.lower():
-            default_dql = """timeseries {
+# ===========================================================================
+# Central Configuration for all SLO Types
+# ===========================================================================
+SLO_TYPE_CONFIG = {
+    "Services": {
+        "entity_column": "services",
+        "name_template_default": "{app}_{type}",
+        "help_text": "Use placeholders like {app}, {type}, and any extra columns from your CSV.",
+        "slo_options": {
+            "Service Availability": {
+                "type_code": "sa",
+                "dql": """timeseries { total=sum(dt.service.request.count), failures=sum(dt.service.request.failure_count) }
+  , by: { dt.entity.service }, filter: { in(dt.entity.service, { <PLACEHOLDER> }) }
+| fieldsAdd sli=(((total[]-failures[])/total[])*(100)), entityName(dt.entity.service)
+| fieldsRemove total, failures""",
+            },
+            "Service Performance": {
+                "type_code": "sp",
+                "dql": """timeseries total=avg(dt.service.request.response_time, default:0)
+, by: { dt.entity.service }, filter: { in(dt.entity.service, { <PLACEHOLDER> }) }
+| fieldsAdd high=iCollectArray(if(total[]>(1000*500), total[])), low=iCollectArray(if(total[]<=(1000*500), total[]))
+| fieldsAdd highRespTimes=iCollectArray(if(isNull(high[]),0,else:1)), lowRespTimes=iCollectArray(if(isNull(low[]),0,else:1))
+| fieldsAdd sli=100*(lowRespTimes[]/(lowRespTimes[]+highRespTimes[])), entityName(dt.entity.service)
+| fieldsRemove total, high, low, highRespTimes, lowRespTimes""",
+            },
+        },
+    },
+    "Hosts": {
+        "entity_column": "hosts",
+        "name_template_default": "{app}_{type}",
+        "help_text": "Use placeholders like {app}, {type}, and any extra columns from your CSV.",
+        "slo_options": {
+            "Host CPU Usage": {
+                "type_code": "hp",
+                "dql": """timeseries sli=avg(dt.host.cpu.usage), by: { dt.entity.host }
+, filter: in(dt.entity.host, { <PLACEHOLDER> })
+| fieldsAdd entityName(dt.entity.host)""",
+            },
+        },
+    },
+    "K8s Clusters": {
+        "entity_column": "id",
+        "name_column": "entity.name",
+        "name_template_default": "{cluster_name}",
+        "help_text": "Use the {cluster_name} placeholder.",
+        "slo_options": {
+            "Kubernetes Cluster Memory Usage Efficiency": {
+                "dql": """timeseries {
   requests_memory = sum(dt.kubernetes.container.requests_memory, rollup:avg),
   memory_allocatable = sum(dt.kubernetes.node.memory_allocatable, rollup:avg)
-}, by:{dt.entity.kubernetes_cluster}
-, filter: IN (dt.entity.kubernetes_cluster, { <PLACEHOLDER> })
-| fieldsAdd sli = (requests_memory[] / memory_allocatable[]) * 100
-| fieldsAdd entityName(dt.entity.kubernetes_cluster)
-| fieldsRemove requests_memory, memory_allocatable
-"""
-        else:
-            default_dql = """timeseries {
+}, by:{dt.entity.kubernetes_cluster}, filter: IN(dt.entity.kubernetes_cluster, { <PLACEHOLDER> })
+| fieldsAdd sli = (requests_memory[] / memory_allocatable[]) * 100, entityName(dt.entity.kubernetes_cluster)
+| fieldsRemove requests_memory, memory_allocatable""",
+            },
+            "Kubernetes Cluster CPU Usage Efficiency": {
+                "dql": """timeseries {
   requests_cpu = sum(dt.kubernetes.container.requests_cpu, rollup:avg),
   cpu_allocatable = sum(dt.kubernetes.node.cpu_allocatable, rollup:avg)
-}, by:{dt.entity.kubernetes_cluster}
-, filter: IN (dt.entity.kubernetes_cluster, { <PLACEHOLDER> })
-| fieldsAdd sli = (requests_cpu[] / cpu_allocatable[]) * 100
-| fieldsAdd entityName(dt.entity.kubernetes_cluster)
-| fieldsRemove requests_cpu, cpu_allocatable
-"""
-
-    # ---------- K8s NAMESPACES ----------
-    elif "K8s Namespaces" in creation_csv_choice:
-        slo_type = st.selectbox(
-            "Namespace SLO Type",
-            ["Kubernetes namespace CPU usage efficiency", "Kubernetes namespace memory usage efficiency"],
-            key="k8s_namespace_slo_type"
-        )
-        if "CPU" in slo_type:
-            default_dql = """timeseries {
+}, by:{dt.entity.kubernetes_cluster}, filter: IN(dt.entity.kubernetes_cluster, { <PLACEHOLDER> })
+| fieldsAdd sli = (requests_cpu[] / cpu_allocatable[]) * 100, entityName(dt.entity.kubernetes_cluster)
+| fieldsRemove requests_cpu, cpu_allocatable""",
+            },
+        },
+    },
+    "K8s Namespaces": {
+        "is_grouped": True,
+        "group_by_column": "k8s.cluster.name",
+        "entity_column": "namespace",
+        "name_template_default": "{cluster_name}",
+        "help_text": "Use the {cluster_name} placeholder. One SLO will be created per cluster.",
+        "slo_options": {
+            "Kubernetes Namespace CPU Usage Efficiency": {
+                "dql": """timeseries {
   cpuUsage = sum(dt.kubernetes.container.cpu_usage, default:0, rollup:avg),
   cpuRequest = sum(dt.kubernetes.container.requests_cpu, rollup:avg)
-}, nonempty:true, by:{dt.entity.cloud_application_namespace}
-, filter: IN(dt.entity.cloud_application_namespace, { <PLACEHOLDER> })
-| fieldsAdd sli = cpuUsage[] / cpuRequest[] * 100
-| fieldsAdd entityName(dt.entity.cloud_application_namespace)
-| fieldsRemove cpuUsage, cpuRequest
-"""
-        else:
-            default_dql = """timeseries {
+}, nonempty:true, by:{dt.entity.cloud_application_namespace}, filter: IN(dt.entity.cloud_application_namespace, { <PLACEHOLDER> })
+| fieldsAdd sli = cpuUsage[] / cpuRequest[] * 100, entityName(dt.entity.cloud_application_namespace)
+| fieldsRemove cpuUsage, cpuRequest""",
+            },
+            "Kubernetes Namespace Memory Usage Efficiency": {
+                "dql": """timeseries {
   memWorkSet = sum(dt.kubernetes.container.memory_working_set, default:0, rollup:avg),
   memRequest = sum(dt.kubernetes.container.requests_memory, rollup:avg)
-}, nonempty:true, by:{dt.entity.cloud_application_namespace}
-, filter: IN(dt.entity.cloud_application_namespace, { <PLACEHOLDER> })
-| fieldsAdd sli = memWorkSet[] / memRequest[] * 100
-| fieldsAdd entityName(dt.entity.cloud_application_namespace)
-| fieldsRemove memWorkSet, memRequest
-"""
+}, nonempty:true, by:{dt.entity.cloud_application_namespace}, filter: IN(dt.entity.cloud_application_namespace, { <PLACEHOLDER> })
+| fieldsAdd sli = memWorkSet[] / memRequest[] * 100, entityName(dt.entity.cloud_application_namespace)
+| fieldsRemove memWorkSet, memRequest""",
+            },
+        },
+    },
+    # --- NEW CUSTOM SLO TYPE ---
+    "Custom": {
+        "entity_column": "app",  # The column to iterate over for the placeholder
+        "name_template_default": "{app}_{type}",
+        "help_text": "Creates one SLO per 'app' in the CSV, using the DQL filter.",
+        "slo_options": {
+            "Custom": {
+                "type_code": "custom",
+                "dql": """timeseries { total=sum(dt.service.request.count), failures=sum(dt.service.request.failure_count) },
+by: { dt.entity.service },
+filter: { matchesValue(entityAttr(dt.entity.service, "tags"), "DT-AppID:<PLACEHOLDER>") }
+| fieldsAdd sli=(((total[]-failures[])/total[])*(100))
+| fieldsAdd entityName(dt.entity.service)
+| fieldsRemove total, failures""",
+            },
+        },
+    },
+}
 
-    # ---------- HOSTS ----------
-    elif "Hosts" in creation_csv_choice:
-        default_dql = """timeseries sli=avg(dt.host.cpu.usage)
-, by: { dt.entity.host }
-, filter: in(dt.entity.host, { <PLACEHOLDER> })
-| fieldsAdd entityName(dt.entity.host)"""
 
-    # The text area to allow editing the final DQL
-    dql_query = st.text_area("DQL Query Template", value=default_dql, height=200)
+# ===========================================================================
+# Helper Functions
+# ===========================================================================
 
-    # SLO Criteria
+def generate_name_tags_description(row_data, df_cols, name_template, base_description):
+    """Generates the final SLO name, tags, and description from a row of data."""
+    tags, description_parts = [], []
+    final_name = name_template
+
+    # For each column from the 3rd onwards (index 2 and up):
+    for col_name in df_cols[2:]:
+        if col_name in row_data and pd.notna(row_data[col_name]) and str(row_data[col_name]).strip() != "":
+            col_value = str(row_data[col_name]).strip()
+            placeholder = f"{{{col_name}}}"
+            if placeholder in final_name:
+                final_name = final_name.replace(placeholder, col_value)
+            tags.append(f"{col_name}:{col_value}")
+            description_parts.append(f"{col_name}={col_value}")
+
+    extra_desc = ", ".join(description_parts)
+    final_description = f"{base_description}, {extra_desc}" if extra_desc else base_description
+    return final_name, tags, final_description
+
+
+def create_slo(client, name, description, criteria, dql, tags):
+    """Wrapper for the client.create_slo call to handle exceptions."""
+    try:
+        custom_sli = {"indicator": dql}
+        new_slo = client.create_slo(name, description, criteria, custom_sli=custom_sli, tags=tags)
+        st.write(f"✅ Created SLO: {name} (ID: {new_slo.get('id')})")
+        return 1
+    except Exception as ex:
+        st.error(f"❌ Failed to create SLO '{name}': {ex}")
+        st.code(dql, language="sql")
+        return 0
+
+
+# ===========================================================================
+# Main Streamlit UI Function
+# ===========================================================================
+
+def show_slo_create():
+    """Renders the 'Create SLOs' tab."""
+    st.header("Create SLOs From CSV")
+
+    client = st.session_state.get("dt_client")
+    csv_paths = st.session_state.get("csv_paths", {})
+    if not client or not csv_paths:
+        st.warning("Client or CSV paths not initialized in session state.")
+        return
+
+    # --- Step 1: Select CSV and SLO Type ---
+    csv_choice = st.selectbox("Choose CSV for creation", list(csv_paths.keys()))
+    creation_csv_path = csv_paths[csv_choice]
+
+    config_key = next((k for k in SLO_TYPE_CONFIG if k in csv_choice), None)
+    if not config_key:
+        st.error(f"No configuration found for '{csv_choice}'. Please check SLO_TYPE_CONFIG.")
+        return
+
+    config = SLO_TYPE_CONFIG[config_key]
+    slo_option_name = st.selectbox("Select SLO Type", list(config["slo_options"].keys()))
+    slo_option_config = config["slo_options"][slo_option_name]
+
+    # --- Step 2: Configure Naming and Criteria ---
+    st.write("**SLO Naming Convention**")
+    naming_convention = st.text_input(
+        "Naming Format",
+        value=config["name_template_default"],
+        help=config["help_text"],
+        key=f"naming_{config_key}"
+    )
+    dql_query = st.text_area("DQL Query Template", value=slo_option_config["dql"], height=200)
+
     st.write("**SLO Criteria**")
-    timeframe_from = st.text_input("Timeframe From", "now-7d")
-    timeframe_to = st.text_input("Timeframe To", "now")
-    target = st.number_input("Target (%)", value=99.5)
-    warning = st.number_input("Warning (%)", value=99.8)
+    c1, c2 = st.columns(2)
+    target = c1.number_input("Target (%)", value=99.5, format="%.3f")
+    warning = c2.number_input("Warning (%)", value=99.8, format="%.3f")
+    timeframe_from = c1.text_input("Timeframe From", "now-7d")
+    timeframe_to = c2.text_input("Timeframe To", "now")
 
+    # --- Step 3: Create SLOs ---
     if st.button("Create SLOs from Selected CSV"):
         try:
-            df_create = pd.read_csv(creation_csv_path)
+            df = robust_read_csv(creation_csv_path)
+            if df.empty:
+                st.error("Could not read or process CSV file.")
+                return
         except Exception as e:
-            st.error(f"Error loading CSV: {e}")
+            st.error(f"Error loading CSV '{creation_csv_path}': {e}")
             return
 
-        criteria = [{
-            "timeframeFrom": timeframe_from,
-            "timeframeTo": timeframe_to,
-            "target": float(target),
-            "warning": float(warning)
-        }]
+        criteria = [{"timeframeFrom": timeframe_from, "timeframeTo": timeframe_to, "target": float(target),
+                     "warning": float(warning)}]
         created_count = 0
 
-        ##################
-        # SERVICES
-        ##################
-        if "Services" in creation_csv_choice:
-            # Verify required columns
-            required_cols = ["app", "services"]
-            missing = [c for c in required_cols if c not in df_create.columns]
-            if missing:
-                st.error(f"Missing required columns: {missing}")
-            else:
-                service_slo_type = st.session_state.get("service_slo_type", "service availability")
-                for i, row in df_create.iterrows():
-                    # Get services list
-                    raw_val = row["services"]
-                    try:
-                        services_list = ast.literal_eval(raw_val)
-                        if not isinstance(services_list, list):
-                            services_list = [services_list]
-                    except:
-                        services_list = [raw_val]
+        with st.spinner("Creating SLOs..."):
+            # Handle K8s Namespaces separately because they are grouped by cluster
+            if config.get("is_grouped"):
+                grouped = df.groupby(config["group_by_column"])
+                for group_name, group in grouped:
+                    all_entities = []
+                    for _, row in group.iterrows():
+                        all_entities.extend(parse_list_field(row[config["entity_column"]]))
 
-                    # Insert each service ID with quotes
-                    services_str = ", ".join(f"\"{s}\"" for s in services_list)
-                    final_dql = dql_query.replace("<PLACEHOLDER>", services_str)
-                    custom_sli = {"indicator": final_dql}
+                    if not all_entities: continue
 
-                    # Base naming placeholders
-                    app_str = str(row["app"]).strip()
-                    # Start with user naming convention
-                    slo_name = naming_convention.replace("{app}", app_str)
-                    # For service type code (sa or sp)
-                    service_type_code = "sa" if "availability" in service_slo_type.lower() else "sp"
-                    slo_name = slo_name.replace("{type}", service_type_code)
+                    MAX_ENTITIES = 40
+                    entity_chunks = [all_entities[i:i + MAX_ENTITIES] for i in
+                                     range(0, len(all_entities), MAX_ENTITIES)]
 
-                    # Build tags from columns[2:] only
-                    row_dict = row.to_dict()
-                    updated_slo_name, tags, tags_desc = generate_tags_description_from_third_col(
-                        row_dict, df_create, slo_name, naming_convention
-                    )
+                    for i, chunk in enumerate(entity_chunks):
+                        entity_str = ", ".join(f'"{e}"' for e in chunk)
+                        final_dql = dql_query.replace("<PLACEHOLDER>", f"{{{entity_str}}}")
 
-                    # Combine base description plus any extra tags
-                    description = f"SLO for app={app_str}"
-                    if tags_desc:
-                        description += f", {tags_desc}"
+                        first_row_data = group.iloc[0].to_dict()
+                        base_name = naming_convention.replace("{cluster_name}", str(group_name))
+                        if len(entity_chunks) > 1:
+                            base_name += f" - Part {i + 1}"
 
-                    # Actually create the SLO
-                    try:
-                        new_slo = client.create_slo(
-                            name=updated_slo_name,
-                            description=description,
-                            criteria=criteria,
-                            custom_sli=custom_sli,
-                            tags=tags
-                        )
-                        created_count += 1
-                        st.write(f"Row {i}: Created SLO ID={new_slo.get('id')}")
-                    except Exception as ex:
-                        st.error(f"Row {i} failed: {ex}")
+                        base_desc = f"{slo_option_name} for cluster: {group_name}"
+                        name, tags, desc = generate_name_tags_description(first_row_data, df.columns, base_name,
+                                                                          base_desc)
 
-        ##################
-        # HOSTS
-        ##################
-        elif "Hosts" in creation_csv_choice:
-            required_cols = ["app", "hosts"]
-            missing = [c for c in required_cols if c not in df_create.columns]
-            if missing:
-                st.error(f"Missing required columns: {missing}")
-            else:
-                for i, row in df_create.iterrows():
-                    raw_val = row["hosts"]
-                    try:
-                        hosts_list = ast.literal_eval(raw_val)
-                        if not isinstance(hosts_list, list):
-                            hosts_list = [hosts_list]
-                    except:
-                        hosts_list = [raw_val]
+                        created_count += create_slo(client, name, desc, criteria, final_dql, tags)
 
-                    hosts_str = ", ".join(f"\"{h}\"" for h in hosts_list)
-                    final_dql = dql_query.replace("<PLACEHOLDER>", hosts_str)
-                    custom_sli = {"indicator": final_dql}
+            else:  # Standard, one SLO per row
+                for i, row in df.iterrows():
+                    row_data = row.to_dict()
+                    # For "Custom" type, the entity is a single string, not a list
+                    if config_key == "Custom":
+                        entities = [str(row_data.get(config["entity_column"]))]
+                    else:
+                        entities = parse_list_field(row_data.get(config["entity_column"]))
 
-                    app_str = str(row["app"]).strip()
-                    slo_name = naming_convention.replace("{app}", app_str)
-                    # "hp" for host performance
-                    slo_name = slo_name.replace("{type}", "hp")
+                    if not entities: continue
 
-                    row_dict = row.to_dict()
-                    updated_slo_name, tags, tags_desc = generate_tags_description_from_third_col(
-                        row_dict, df_create, slo_name, naming_convention
-                    )
+                    # For custom, we don't wrap in quotes or braces
+                    entity_str = entities[0] if config_key == "Custom" else ", ".join(f'"{e}"' for e in entities)
+                    final_dql = dql_query.replace("<PLACEHOLDER>", entity_str)
 
-                    description = f"SLO for app={app_str}"
-                    if tags_desc:
-                        description += f", {tags_desc}"
+                    if "K8s Clusters" in csv_choice:
+                        cluster_name = str(row_data.get(config.get("name_column"), ""))
+                        base_name = naming_convention.replace("{cluster_name}", cluster_name)
+                        base_desc = f"K8s cluster usage: {cluster_name}"
+                    else:  # Services, Hosts, Custom
+                        app_name = str(row_data.get("app", ""))
+                        type_code = slo_option_config.get("type_code", "slo")
+                        base_name = naming_convention.replace("{app}", app_name).replace("{type}", type_code)
+                        base_desc = f"SLO for app={app_name}"
 
-                    try:
-                        new_slo = client.create_slo(
-                            name=updated_slo_name,
-                            description=description,
-                            criteria=criteria,
-                            custom_sli=custom_sli,
-                            tags=tags
-                        )
-                        created_count += 1
-                        st.write(f"Row {i}: Created SLO ID={new_slo.get('id')}")
-                    except Exception as ex:
-                        st.error(f"Row {i} failed: {ex}")
+                    name, tags, desc = generate_name_tags_description(row_data, df.columns, base_name, base_desc)
+                    created_count += create_slo(client, name, desc, criteria, final_dql, tags)
 
-        ##################
-        # K8s CLUSTERS
-        ##################
-        elif "K8s Clusters" in creation_csv_choice:
-            required_cols = ["entity.name", "id"]
-            missing = [c for c in required_cols if c not in df_create.columns]
-            if missing:
-                st.error(f"Missing required columns: {missing}")
-            else:
-                for i, row in df_create.iterrows():
-                    cluster_name = str(row["entity.name"]).strip()
-                    cluster_id = str(row["id"]).strip()
-
-                    final_dql = dql_query.replace("<PLACEHOLDER>", f"\"{cluster_id}\"")
-                    custom_sli = {"indicator": final_dql}
-
-                    base_slo_name = naming_convention.replace("{cluster_name}", cluster_name).strip()
-                    row_dict = row.to_dict()
-
-                    updated_slo_name, tags, tags_desc = generate_tags_description_from_third_col(
-                        row_dict, df_create, base_slo_name, naming_convention
-                    )
-
-                    description = f"K8s cluster usage: {cluster_name}"
-                    if tags_desc:
-                        description += f", {tags_desc}"
-
-                    try:
-                        new_slo = client.create_slo(
-                            name=updated_slo_name,
-                            description=description,
-                            criteria=criteria,
-                            custom_sli=custom_sli,
-                            tags=tags
-                        )
-                        created_count += 1
-                        st.write(f"Row {i}: Created K8s SLO ID={new_slo.get('id')}")
-                    except Exception as ex:
-                        st.error(f"Row {i} failed: {ex}")
-
-        ##################
-        # K8s NAMESPACES
-        ##################
-        elif "K8s Namespaces" in creation_csv_choice:
-            required_cols = ["k8s.cluster.name", "namespace"]
-            missing = [c for c in required_cols if c not in df_create.columns]
-            if missing:
-                st.error(f"Missing required columns: {missing}")
-            else:
-                grouped = df_create.groupby("k8s.cluster.name")
-                slo_type = st.session_state.get("k8s_namespace_slo_type",
-                                                "Kubernetes namespace CPU usage efficiency")
-                type_abbr = "cpu" if "CPU" in slo_type else "mem"
-
-                for cluster_name, group in grouped:
-                    all_namespaces = []
-                    for _, row_ns in group.iterrows():
-                        raw_val = str(row_ns["namespace"]).strip()
-                        try:
-                            ns_list = ast.literal_eval(raw_val)
-                            if not isinstance(ns_list, list):
-                                ns_list = [ns_list]
-                        except:
-                            ns_list = [raw_val]
-                        all_namespaces.extend(ns_list)
-
-                    # remove duplicates if needed
-                    clean_ns_list = list({ns.strip() for ns in all_namespaces})
-                    # each ID must be quoted individually
-                    inner_ns = ", ".join(f"\"{ns}\"" for ns in clean_ns_list)
-                    namespace_ids_formatted = f'{{ {inner_ns} }}'
-
-                    final_dql = dql_query.replace("<PLACEHOLDER>", namespace_ids_formatted)
-                    custom_sli = {"indicator": final_dql}
-
-                    base_slo_name = naming_convention.replace("{cluster_name}", cluster_name).strip()
-
-                    first_row = group.iloc[0]
-                    row_dict = first_row.to_dict()
-                    updated_slo_name, tags, tags_desc = generate_tags_description_from_third_col(
-                        row_dict, df_create, base_slo_name, naming_convention
-                    )
-
-                    description = f"{slo_type} for cluster: {cluster_name}"
-                    if tags_desc:
-                        description += f", {tags_desc}"
-
-                    try:
-                        st.write(f"Creating SLO for cluster {cluster_name}")
-                        new_slo = client.create_slo(
-                            name=updated_slo_name,
-                            description=description,
-                            criteria=criteria,
-                            custom_sli=custom_sli,
-                            tags=tags
-                        )
-                        created_count += 1
-                        st.write(f"Created {slo_type} SLO for cluster {cluster_name}, ID={new_slo.get('id')}")
-                    except Exception as ex:
-                        st.error(f"Error creating SLO for cluster {cluster_name}: {ex}")
-                        st.error("Failed DQL query:")
-                        st.code(final_dql, language="sql")
-
-        st.success(f"Creation finished. {created_count} SLO(s) created.")
-
+        st.success(f"Creation process finished. {created_count} SLO(s) created.")

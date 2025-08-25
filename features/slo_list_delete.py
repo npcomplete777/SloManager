@@ -1,77 +1,95 @@
-# features/slo_list_delete.py
-
 import streamlit as st
+from utils import load_all_slos
+
+
+def _process_deletions(client, slos_to_delete):
+    """
+    Helper function to iterate through selected SLOs, delete them,
+    and provide detailed feedback.
+    """
+    if not slos_to_delete:
+        st.warning("No SLOs were selected for deletion.")
+        return
+
+    deleted_count = 0
+    for s_id, s_ver, s_name in slos_to_delete:
+        try:
+            client.delete_slo(s_id, s_ver)
+            st.success(f"Deleted: **{s_name}** (ID: {s_id}, Version: {s_ver})")
+            deleted_count += 1
+        except Exception as ex:
+            st.error(f"Error deleting {s_name}: {ex}")
+
+    if deleted_count > 0:
+        with st.spinner("Refreshing SLO list..."):
+            st.session_state["all_slos"] = load_all_slos(client)
+
 
 def show_slo_list_delete():
     st.header("List and Delete SLOs")
 
-    # We expect a dt_client in session_state
     client = st.session_state["dt_client"]
 
     if st.button("Load All SLOs"):
-        try:
-            all_slos = []
-            page_key = None
-            with st.spinner("Loading SLOs..."):
-                while True:
-                    response_json = client.list_slos(page_size=200, page_key=page_key)
-                    items = response_json.get("slos", [])
-                    all_slos.extend(items)
-                    page_key = response_json.get("nextPageKey")
-                    if not page_key:
-                        break
-            st.session_state["all_slos"] = all_slos
-            st.success(f"Successfully loaded {len(all_slos)} SLOs.")
-        except Exception as e:
-            st.error(f"Error loading SLOs: {e}")
+        with st.spinner("Loading SLOs..."):
+            st.session_state["all_slos"] = load_all_slos(client)
+        st.success(f"Successfully loaded {len(st.session_state.get('all_slos', []))} SLOs.")
+        st.rerun()
 
-    if "all_slos" in st.session_state:
+    if "all_slos" in st.session_state and st.session_state["all_slos"]:
         all_slos = st.session_state["all_slos"]
-        st.write(f"Total SLOs found: {len(all_slos)}")
 
-        if all_slos:
-            to_delete = []
-            for i, slo_data in enumerate(all_slos):
-                slo_name = slo_data.get("name", "Unnamed")
+        # --- TOP "DELETE ALL" SECTION ---
+        col1, col2 = st.columns([0.7, 0.3])
+        col1.info(f"**Total SLOs found: {len(all_slos)}**")
+        delete_all_top = col2.button("🚨 Delete ALL SLOs", key="delete_all_top", use_container_width=True)
+        st.write("---")
+
+        # Section for Deleting Selected SLOs (using a form)
+        with st.form(key="delete_selected_form"):
+            st.subheader("Delete Selected SLOs")
+            st.write("Select individual SLOs below and click the button at the bottom to delete them.")
+
+            for slo_data in all_slos:
                 slo_id = slo_data.get("id", "")
-                version = slo_data.get("version", "")
+                slo_name = slo_data.get("name", "Unnamed")
 
-                col1, col2, col3 = st.columns([0.05, 0.6, 0.35])
-                with col1:
-                    checked = st.checkbox("", key=f"slo_del_{i}")
-                    if checked:
-                        to_delete.append((slo_id, version, slo_name))
-                with col2:
-                    st.write(f"**{slo_name}**")
-                with col3:
-                    st.write(f"ID: {slo_id}, Ver: {version}")
+                check_col, expander_col = st.columns([0.05, 0.95])
+                with check_col:
+                    st.checkbox(" ", key=f"del_{slo_id}", label_visibility="collapsed")
+                with expander_col:
+                    with st.expander(f"**{slo_name}**"):
+                        st.json(slo_data)
 
-            if to_delete and st.button("Delete Selected SLOs"):
-                for (s_id, s_ver, s_name) in to_delete:
-                    try:
-                        client.delete_slo(s_id, s_ver)
-                        st.write(f"Deleted {s_name} (ID={s_id})")
-                    except Exception as ex:
-                        st.error(f"Error deleting {s_name}: {ex}")
+            submitted_selected = st.form_submit_button(
+                "Delete Selected SLOs",
+                use_container_width=True,
+                type="primary"
+            )
 
-                # Refresh the list after deletion
-                with st.spinner("Refreshing SLO list..."):
-                    all_slos = []
-                    page_key = None
-                    while True:
-                        resp_json = client.list_slos(page_size=200, page_key=page_key)
-                        items2 = resp_json.get("slos", [])
-                        all_slos.extend(items2)
-                        page_key = resp_json.get("nextPageKey")
-                        if not page_key:
-                            break
-                    st.session_state["all_slos"] = all_slos
-                    st.success("SLO list refreshed.")
+            if submitted_selected:
+                slos_to_delete = []
+                for slo in all_slos:
+                    slo_id = slo.get("id")
+                    if st.session_state[f"del_{slo_id}"]:
+                        slos_to_delete.append((
+                            slo_id,
+                            slo.get("version"),
+                            slo.get("name")
+                        ))
+                _process_deletions(client, slos_to_delete)
+                st.rerun()
 
-            # Show a checkbox for "Delete ALL SLOs" confirmation
-            delete_confirm = st.checkbox("I confirm I want to delete ALL SLOs", key="delete_all_confirm")
+        # --- BOTTOM "DELETE ALL" SECTION ---
+        st.write("---")
+        st.subheader("Bulk Deletion")
 
-            if delete_confirm and st.button("Delete ALL SLOs"):
+        delete_all_bottom = st.button("🚨 Delete ALL SLOs", key="delete_all_bottom", use_container_width=True)
+
+        confirm_delete_all = st.checkbox("I confirm I want to delete ALL loaded SLOs")
+
+        if delete_all_top or delete_all_bottom:
+            if confirm_delete_all:
                 with st.spinner("Deleting all SLOs..."):
                     for slo_data in all_slos:
                         sid = slo_data.get("id")
@@ -79,8 +97,11 @@ def show_slo_list_delete():
                         name = slo_data.get("name", "Unnamed")
                         try:
                             client.delete_slo(sid, ver)
-                            st.write(f"Deleted {name}")
+                            st.success(f"Deleted: **{name}** (ID: {sid})")
                         except Exception as ex:
                             st.error(f"Error deleting {name}: {ex}")
                 st.session_state["all_slos"] = []
-                st.success("All SLOs deleted.")
+                st.success("All SLOs have been deleted.")
+                st.rerun()
+            else:
+                st.warning("You must check the confirmation box to delete all SLOs.")

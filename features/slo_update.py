@@ -1,6 +1,7 @@
 # features/slo_update.py
 
 import streamlit as st
+from utils import load_all_slos
 
 def show_slo_update():
     st.header("Update Existing SLOs")
@@ -10,18 +11,9 @@ def show_slo_update():
     # Refresh SLO list if needed
     if "all_slos" not in st.session_state or st.button("Refresh SLO List", key="refresh_slos_update"):
         try:
-            all_slos = []
-            page_key = None
             with st.spinner("Loading SLOs..."):
-                while True:
-                    response_json = client.list_slos(page_size=200, page_key=page_key)
-                    items = response_json.get("slos", [])
-                    all_slos.extend(items)
-                    page_key = response_json.get("nextPageKey")
-                    if not page_key:
-                        break
-            st.session_state["all_slos"] = all_slos
-            st.success(f"Loaded {len(all_slos)} SLOs.")
+                st.session_state["all_slos"] = load_all_slos(client)
+            st.success(f"Loaded {len(st.session_state['all_slos'])} SLOs.")
         except Exception as e:
             st.error(f"Error loading SLOs: {e}")
 
@@ -102,16 +94,7 @@ def show_slo_update():
 
                     # Refresh SLO list
                     with st.spinner("Refreshing SLO list..."):
-                        updated_slos = []
-                        page_key = None
-                        while True:
-                            resp_js = client.list_slos(page_size=200, page_key=page_key)
-                            items_new = resp_js.get("slos", [])
-                            updated_slos.extend(items_new)
-                            page_key = resp_js.get("nextPageKey")
-                            if not page_key:
-                                break
-                        st.session_state["all_slos"] = updated_slos
+                        st.session_state["all_slos"] = load_all_slos(client)
 
                 except Exception as ex:
                     st.error(f"Error updating SLO: {ex}")
