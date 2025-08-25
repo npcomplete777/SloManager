@@ -11,7 +11,7 @@ from async_platform_client import AsyncDynatracePlatformClient
 SLO_TYPE_CONFIG = {
     "Services": {
         "entity_column": "services",
-        "name_template_default": "{app}_{type}",
+        "name_template_default": "{app}_{bu}_{type}",
         "help_text": "Use placeholders like {app}, {type}, and any extra columns from your CSV.",
         "slo_options": {
             "Service Availability": {
@@ -34,7 +34,7 @@ SLO_TYPE_CONFIG = {
     },
     "Hosts": {
         "entity_column": "hosts",
-        "name_template_default": "{app}_{type}",
+        "name_template_default": "{app}_{bu}_{type}",
         "help_text": "Use placeholders like {app}, {type}, and any extra columns from your CSV.",
         "slo_options": {
             "Host CPU Usage": {
@@ -96,7 +96,7 @@ SLO_TYPE_CONFIG = {
     },
     "Custom": {
         "entity_column": "app",
-        "name_template_default": "{app}_{type}",
+        "name_template_default": "{app}_{bu}",
         "help_text": "Creates one SLO per 'app' in the CSV, using the DQL filter.",
         "slo_options": {
             "Custom": {
