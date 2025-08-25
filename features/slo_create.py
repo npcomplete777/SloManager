@@ -1,8 +1,9 @@
 # features/slo_create.py
-
 import streamlit as st
 import pandas as pd
 from utils import robust_read_csv, parse_list_field
+from async_utils import run_async_tasks
+from async_platform_client import AsyncDynatracePlatformClient
 
 # ===========================================================================
 # Central Configuration for all SLO Types
@@ -93,9 +94,8 @@ SLO_TYPE_CONFIG = {
             },
         },
     },
-    # --- NEW CUSTOM SLO TYPE ---
     "Custom": {
-        "entity_column": "app",  # The column to iterate over for the placeholder
+        "entity_column": "app",
         "name_template_default": "{app}_{type}",
         "help_text": "Creates one SLO per 'app' in the CSV, using the DQL filter.",
         "slo_options": {
@@ -114,7 +114,7 @@ filter: { matchesValue(entityAttr(dt.entity.service, "tags"), "DT-AppID:<PLACEHO
 
 
 # ===========================================================================
-# Helper Functions
+# Helper Function
 # ===========================================================================
 
 def generate_name_tags_description(row_data, df_cols, name_template, base_description):
@@ -122,7 +122,6 @@ def generate_name_tags_description(row_data, df_cols, name_template, base_descri
     tags, description_parts = [], []
     final_name = name_template
 
-    # For each column from the 3rd onwards (index 2 and up):
     for col_name in df_cols[2:]:
         if col_name in row_data and pd.notna(row_data[col_name]) and str(row_data[col_name]).strip() != "":
             col_value = str(row_data[col_name]).strip()
@@ -135,19 +134,6 @@ def generate_name_tags_description(row_data, df_cols, name_template, base_descri
     extra_desc = ", ".join(description_parts)
     final_description = f"{base_description}, {extra_desc}" if extra_desc else base_description
     return final_name, tags, final_description
-
-
-def create_slo(client, name, description, criteria, dql, tags):
-    """Wrapper for the client.create_slo call to handle exceptions."""
-    try:
-        custom_sli = {"indicator": dql}
-        new_slo = client.create_slo(name, description, criteria, custom_sli=custom_sli, tags=tags)
-        st.write(f"✅ Created SLO: {name} (ID: {new_slo.get('id')})")
-        return 1
-    except Exception as ex:
-        st.error(f"❌ Failed to create SLO '{name}': {ex}")
-        st.code(dql, language="sql")
-        return 0
 
 
 # ===========================================================================
@@ -207,64 +193,103 @@ def show_slo_create():
 
         criteria = [{"timeframeFrom": timeframe_from, "timeframeTo": timeframe_to, "target": float(target),
                      "warning": float(warning)}]
+
+        st.write("---")
+        st.info("Preparing SLOs for asynchronous creation...")
+
+        # 1. Prepare all SLO creation parameters first
+        slo_creation_params = []
+
+        if config.get("is_grouped"):
+            grouped = df.groupby(config["group_by_column"])
+            for group_name, group in grouped:
+                all_entities = []
+                for _, row in group.iterrows():
+                    all_entities.extend(parse_list_field(row[config["entity_column"]]))
+
+                if not all_entities: continue
+
+                MAX_ENTITIES = 40
+                entity_chunks = [all_entities[i:i + MAX_ENTITIES] for i in
+                                 range(0, len(all_entities), MAX_ENTITIES)]
+
+                for i, chunk in enumerate(entity_chunks):
+                    entity_str = ", ".join(f'"{e}"' for e in chunk)
+                    final_dql = dql_query.replace("<PLACEHOLDER>", f"{{{entity_str}}}")
+
+                    first_row_data = group.iloc[0].to_dict()
+                    base_name = naming_convention.replace("{cluster_name}", str(group_name))
+                    if len(entity_chunks) > 1:
+                        base_name += f" - Part {i + 1}"
+
+                    base_desc = f"{slo_option_name} for cluster: {group_name}"
+                    name, tags, desc = generate_name_tags_description(first_row_data, df.columns, base_name,
+                                                                      base_desc)
+                    params = {"name": name, "description": desc, "criteria": criteria,
+                              "custom_sli": {"indicator": final_dql}, "tags": tags}
+                    slo_creation_params.append(params)
+
+        else:  # Standard, one SLO per row
+            for i, row in df.iterrows():
+                row_data = row.to_dict()
+                if config_key == "Custom":
+                    entities = [str(row_data.get(config["entity_column"]))]
+                else:
+                    entities = parse_list_field(row_data.get(config["entity_column"]))
+
+                if not entities: continue
+
+                entity_str = entities[0] if config_key == "Custom" else ", ".join(f'"{e}"' for e in entities)
+                final_dql = dql_query.replace("<PLACEHOLDER>", entity_str)
+
+                if "K8s Clusters" in csv_choice:
+                    cluster_name = str(row_data.get(config.get("name_column"), ""))
+                    base_name = naming_convention.replace("{cluster_name}", cluster_name)
+                    base_desc = f"K8s cluster usage: {cluster_name}"
+                else:
+                    app_name = str(row_data.get("app", ""))
+                    bu_name = str(row_data.get("bu", ""))  # Get the 'bu' value from the row
+                    type_code = slo_option_config.get("type_code", "slo")
+
+                    # Replace {app}, {type}, and the new {bu} placeholder
+                    base_name = naming_convention.replace("{app}", app_name).replace("{type}", type_code).replace(
+                        "{bu}", bu_name)
+                    base_desc = f"SLO for app={app_name}"
+
+                name, tags, desc = generate_name_tags_description(row_data, df.columns, base_name, base_desc)
+                params = {"name": name, "description": desc, "criteria": criteria,
+                          "custom_sli": {"indicator": final_dql}, "tags": tags}
+                slo_creation_params.append(params)
+
+        if not slo_creation_params:
+            st.warning("No SLOs to create based on the provided CSV.")
+            return
+
+        st.warning(f"Starting asynchronous creation of {len(slo_creation_params)} SLOs...")
+
+        # 2. Create the list of async tasks
+        async_client = AsyncDynatracePlatformClient(client.base_url, client.platform_token)
+        tasks = [
+            async_client.create_slo(
+                name=p["name"],
+                description=p["description"],
+                criteria=p["criteria"],
+                custom_sli=p["custom_sli"],
+                tags=p["tags"]
+            ) for p in slo_creation_params
+        ]
+
+        # 3. Run all tasks concurrently
+        results = run_async_tasks(tasks)
+
+        # 4. Process results
         created_count = 0
+        for i, res in enumerate(results):
+            slo_name = slo_creation_params[i].get('name')
+            if isinstance(res, Exception):
+                st.error(f"❌ Failed to create SLO '{slo_name}': {res}")
+            else:
+                st.write(f"✅ Created SLO: {slo_name} (ID: {res.get('id')})")
+                created_count += 1
 
-        with st.spinner("Creating SLOs..."):
-            # Handle K8s Namespaces separately because they are grouped by cluster
-            if config.get("is_grouped"):
-                grouped = df.groupby(config["group_by_column"])
-                for group_name, group in grouped:
-                    all_entities = []
-                    for _, row in group.iterrows():
-                        all_entities.extend(parse_list_field(row[config["entity_column"]]))
-
-                    if not all_entities: continue
-
-                    MAX_ENTITIES = 40
-                    entity_chunks = [all_entities[i:i + MAX_ENTITIES] for i in
-                                     range(0, len(all_entities), MAX_ENTITIES)]
-
-                    for i, chunk in enumerate(entity_chunks):
-                        entity_str = ", ".join(f'"{e}"' for e in chunk)
-                        final_dql = dql_query.replace("<PLACEHOLDER>", f"{{{entity_str}}}")
-
-                        first_row_data = group.iloc[0].to_dict()
-                        base_name = naming_convention.replace("{cluster_name}", str(group_name))
-                        if len(entity_chunks) > 1:
-                            base_name += f" - Part {i + 1}"
-
-                        base_desc = f"{slo_option_name} for cluster: {group_name}"
-                        name, tags, desc = generate_name_tags_description(first_row_data, df.columns, base_name,
-                                                                          base_desc)
-
-                        created_count += create_slo(client, name, desc, criteria, final_dql, tags)
-
-            else:  # Standard, one SLO per row
-                for i, row in df.iterrows():
-                    row_data = row.to_dict()
-                    # For "Custom" type, the entity is a single string, not a list
-                    if config_key == "Custom":
-                        entities = [str(row_data.get(config["entity_column"]))]
-                    else:
-                        entities = parse_list_field(row_data.get(config["entity_column"]))
-
-                    if not entities: continue
-
-                    # For custom, we don't wrap in quotes or braces
-                    entity_str = entities[0] if config_key == "Custom" else ", ".join(f'"{e}"' for e in entities)
-                    final_dql = dql_query.replace("<PLACEHOLDER>", entity_str)
-
-                    if "K8s Clusters" in csv_choice:
-                        cluster_name = str(row_data.get(config.get("name_column"), ""))
-                        base_name = naming_convention.replace("{cluster_name}", cluster_name)
-                        base_desc = f"K8s cluster usage: {cluster_name}"
-                    else:  # Services, Hosts, Custom
-                        app_name = str(row_data.get("app", ""))
-                        type_code = slo_option_config.get("type_code", "slo")
-                        base_name = naming_convention.replace("{app}", app_name).replace("{type}", type_code)
-                        base_desc = f"SLO for app={app_name}"
-
-                    name, tags, desc = generate_name_tags_description(row_data, df.columns, base_name, base_desc)
-                    created_count += create_slo(client, name, desc, criteria, final_dql, tags)
-
-        st.success(f"Creation process finished. {created_count} SLO(s) created.")
+        st.success(f"Creation process finished. {created_count}/{len(slo_creation_params)} SLO(s) created.")

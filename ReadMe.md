@@ -86,6 +86,7 @@ The naming format is a template string that generates a descriptive name for eac
 ```
 Where:
 - `{app}` is replaced by the value in the CSV column named 'app'
+- `{bu}` is replaced by the value in the CSV column named 'bu'
 - `{type}` is replaced by a code based on your selection:
   - Services: "sa" for availability or "sp" for performance
   - Hosts: "hp" for host performance

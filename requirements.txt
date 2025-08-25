@@ -1,4 +1,5 @@
-streamlit
+# requirements.txt
 pandas
 PyYAML
-requests
+streamlit
+httpx

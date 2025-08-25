@@ -5,7 +5,7 @@ csv_paths:
   K8s Clusters (ZURICH_K8S_CLUSTERS): templates/ZURICH_K8s_CLUSTERS.csv
   K8s Namespaces (ZURICH_K8S_NAMESPACES_BY_CLUSTER): templates/ZURICH_K8S_NAMESPACES_BY_CLUSTER.csv
   Services (ZURICH_APPS_SERVICES_WITH_TAGS): templates/ZURICH_APPS_SERVICES_WITH_TAGS.csv
-platform_token: YOUR_DYNATRACE_TOKEN_HERE
+platform_token: PLATFORM_TOKEN_HERE_WITH_SLO_PERMISSIONS
 settings:
   output_dir: output
   output_format: csv

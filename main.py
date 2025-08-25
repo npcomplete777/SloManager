@@ -23,6 +23,7 @@ from features.k8s_inventory import show_k8s_inventory
 # Configure logging (optional)
 logging.basicConfig(level=logging.INFO)
 
+
 def main():
     # Set page config
     st.set_page_config(page_title="Dynatrace Platform Manager", layout="wide")
@@ -41,6 +42,7 @@ def main():
     with st.sidebar:
         st.header("Dynatrace Configuration")
 
+        # Get live values from the UI text inputs
         base_url = st.text_input(
             "Base URL",
             value=config.get("base_url", ""),
@@ -54,29 +56,43 @@ def main():
             placeholder="Enter your platform token"
         )
 
-        if base_url and platform_token:
+        if st.button("Save Configuration"):
+            # Update the config dict before saving to file
             st.session_state["config"]["base_url"] = base_url
             st.session_state["config"]["platform_token"] = platform_token
-
-            if st.button("Save Configuration"):
-                try:
-                    with open("config.yaml", "w") as f:
-                        yaml.dump(st.session_state["config"], f)
-                    st.success("Configuration saved to config.yaml")
-                except Exception as e:
-                    st.error(f"Error saving configuration: {e}")
+            try:
+                with open("config.yaml", "w") as f:
+                    yaml.dump(st.session_state["config"], f)
+                st.success("Configuration saved to config.yaml")
+            except Exception as e:
+                st.error(f"Error saving configuration: {e}")
 
     # --- CHECK MINIMUM CONFIG ---
-    if not config.get("base_url") or not config.get("platform_token"):
+    if not base_url or not platform_token:
         st.warning("Please enter the Dynatrace base URL and platform token in the sidebar to continue.")
         return
 
-    # 2) Initialize the Platform client once, store in session state
+    # 2) DYNAMICALLY INITIALIZE THE PLATFORM CLIENT
+    # This logic now runs on every script rerun to ensure the client is up-to-date.
+    # It re-creates the client if it doesn't exist OR if the URL/token has changed.
+    client_needs_update = False
     if "dt_client" not in st.session_state:
-        st.session_state["dt_client"] = DynatracePlatformClient(
-            base_url=config["base_url"],
-            platform_token=config["platform_token"]
-        )
+        client_needs_update = True
+    else:
+        current_client = st.session_state["dt_client"]
+        # Check if the client's current config matches the live UI config
+        if current_client.base_url != base_url or current_client.platform_token != platform_token:
+            client_needs_update = True
+
+    if client_needs_update:
+        try:
+            st.session_state["dt_client"] = DynatracePlatformClient(
+                base_url=base_url,
+                platform_token=platform_token
+            )
+        except Exception as e:
+            st.error(f"Failed to initialize client: {e}")
+            return
 
     # 3) Load CSV file paths from the config object
     if "csv_paths" not in st.session_state:
